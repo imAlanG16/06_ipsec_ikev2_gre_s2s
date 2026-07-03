@@ -1,0 +1,213 @@
+###PEER OESTE###
+
+enable
+configure terminal
+
+hostname OESTE
+no ip domain-lookup
+ip cef
+
+banner motd #Solo personal autorizado#
+
+interface Ethernet0/0
+ description WAN-HACIA-ISP
+ ip address 1.1.1.2 255.255.255.252
+ no shutdown
+
+interface Ethernet0/1
+ description LAN-OESTE
+ ip address 14.3.20.1 255.255.255.0
+ no shutdown
+
+exit
+
+ip route 0.0.0.0 0.0.0.0 1.1.1.1
+
+ip dhcp excluded-address 14.3.20.1 14.3.20.20
+
+ip dhcp pool LAN-OESTE
+ network 14.3.20.0 255.255.255.0
+ default-router 14.3.20.1
+ dns-server 8.8.8.8 1.1.1.1
+ domain-name Oeste.local
+exit
+
+
+crypto ikev2 proposal PROP_IKEV2_OESTE
+ encryption aes-cbc-256
+ integrity sha256
+ group 14
+exit
+
+crypto ikev2 policy POL_IKEV2_OESTE
+ proposal PROP_IKEV2_OESTE
+exit
+
+crypto ikev2 keyring KEYRING_IKEV2_OESTE
+ peer ESTE
+  address 2.2.2.2
+  pre-shared-key local CISCO123
+  pre-shared-key remote CISCO123
+ exit
+exit
+
+crypto ikev2 profile PROFILE_IKEV2_OESTE
+ match identity remote address 2.2.2.2 255.255.255.255
+ authentication remote pre-share
+ authentication local pre-share
+ keyring local KEYRING_IKEV2_OESTE
+exit
+
+
+crypto ipsec transform-set TS_IKEV2_OESTE esp-aes 256 esp-sha256-hmac
+ mode transport
+exit
+
+crypto ipsec profile PROF_IPSEC_IKEV2_OESTE
+ set transform-set TS_IKEV2_OESTE
+ set ikev2-profile PROFILE_IKEV2_OESTE
+exit
+
+
+interface Tunnel0
+ description GRE-SOBRE-IPSEC-IKEV2-HACIA-ESTE
+ ip address 10.10.10.2 255.255.255.252
+ ip mtu 1400
+ tcp adjust-mss 1360
+ tunnel source Ethernet0/0
+ tunnel destination 2.2.2.2
+ tunnel mode gre ip
+ tunnel protection ipsec profile PROF_IPSEC_IKEV2_OESTE
+ no shutdown
+exit
+
+ip route 14.3.10.0 255.255.255.0 10.10.10.1
+
+end
+write memory
+
+### PEER ESTE ###
+
+enable
+configure terminal
+
+hostname ESTE
+no ip domain-lookup
+ip cef
+
+interface Ethernet0/0
+ description WAN-HACIA-OESTE
+ ip address 2.2.2.2 255.255.255.0
+ no shutdown
+
+interface Ethernet0/1
+ description LAN-ESTE
+ ip address 14.3.10.1 255.255.255.0
+ no shutdown
+
+ip route 0.0.0.0 0.0.0.0 2.2.2.1
+
+exit
+
+ip dhcp excluded-address 14.3.10.1 14.3.10.20
+
+ip dhcp pool LAN-ESTE
+ network 14.3.10.0 255.255.255.0
+ default-router 14.3.10.1
+ dns-server 8.8.8.8 1.1.1.1
+ domain-name este.local
+
+exit
+
+crypto ikev2 proposal PROP_IKEV2_ESTE
+ encryption aes-cbc-256
+ integrity sha256
+ group 14
+exit
+
+crypto ikev2 policy POL_IKEV2_ESTE
+ proposal PROP_IKEV2_ESTE
+exit
+
+crypto ikev2 keyring KEYRING_IKEV2_ESTE
+ peer OESTE
+  address 1.1.1.2
+  pre-shared-key local CISCO123
+  pre-shared-key remote CISCO123
+ exit
+exit
+
+crypto ikev2 profile PROFILE_IKEV2_ESTE
+ match identity remote address 1.1.1.2 255.255.255.255
+ authentication remote pre-share
+ authentication local pre-share
+ keyring local KEYRING_IKEV2_ESTE
+exit
+
+crypto ipsec transform-set TS_IKEV2_ESTE esp-aes 256 esp-sha256-hmac
+ mode transport
+exit
+
+crypto ipsec profile PROF_IPSEC_IKEV2_ESTE
+ set transform-set TS_IKEV2_ESTE
+ set ikev2-profile PROFILE_IKEV2_ESTE
+exit
+
+interface Tunnel0
+ description GRE-SOBRE-IPSEC-IKEV2-HACIA-OESTE
+ ip address 10.10.10.1 255.255.255.252
+ tunnel source Ethernet0/0
+ tunnel destination 1.1.1.2
+ tunnel mode gre ip
+ tunnel protection ipsec profile PROF_IPSEC_IKEV2_ESTE
+ no shutdown
+
+ip route 14.3.20.0 255.255.255.0 10.10.10.2
+
+end
+write memory
+
+###ISP###
+
+ena
+configure terminal
+
+! --- INTERFAZ HACIA PEER OESTE (.1) ---
+interface Ethernet0/0
+ description CONEXION_A_PEER_OESTE
+ ip address 1.1.1.1 255.255.255.252
+ no shutdown
+exit
+
+! --- INTERFAZ HACIA PEER ESTE (.1) ---
+interface Ethernet0/1
+ description CONEXION_A_PEER_ESTE
+ ip address 2.2.2.1 255.255.255.252
+ no shutdown
+exit
+
+! --- RUTA HACIA EL OESTE ---
+ip route 1.1.1.2 255.255.255.255 Ethernet0/0
+
+! --- RUTA HACIA EL ESTE ---
+ip route 2.2.2.2 255.255.255.255 Ethernet0/1
+
+end
+
+##############################################
+
+###Verificacion###
+
+Desde VPC:
+
+tracer 14.3.10.21
+o
+tracer 14.3.20.21
+
+Routers:
+
+show crypto ikev2 sa 
+show crypto ipsec sa
+show interfaces tunnel 0
+
+
